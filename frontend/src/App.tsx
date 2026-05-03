@@ -1,143 +1,114 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import io, { Socket } from 'socket.io-client';
-import axios from 'axios';
+import React, { useState, useCallback, useEffect } from 'react';
+import Login from './components/Login';
+import Canvas from './components/Canvas';
+import Toolbar from './components/Toolbar';
+import CollabSocket from './services/socket';
+import { Drawing } from './types';
 import './App.css';
 
-interface User {
-  id: string;
-  username: string;
-}
-
-interface Drawing {
-  x: number;
-  y: number;
-  color: string;
-  size: number;
-}
-
 const App: React.FC = () => {
-  const [socket, setSocket] = useState<Socket | null>(null);
-  const [token, setToken] = useState<string>('');
-  const [username, setUsername] = useState('');
+  const [token, setToken] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentColor, setCurrentColor] = useState('#000000');
   const [currentSize, setCurrentSize] = useState(5);
+  const [socket, setSocket] = useState<CollabSocket | null>(null);
 
-  // Login
-  const login = async () => {
-    try {
-      const response = await axios.post('http://localhost:8080/auth/login', {
-        username,
-        password: 'password123'
-      });
-      setToken(response.data.token);
-      setIsAuthenticated(true);
-    } catch (error) {
-      console.error('Login failed', error);
-    }
-  };
-
-  // Connect WebSocket
-  useEffect(() => {
-    if (token && isAuthenticated) {
-      const newSocket = io('http://localhost:8080', {
-        auth: { token }
-      });
-      
-      newSocket.on('connect', () => {
-        console.log('Connected to collaboration service');
-        setSocket(newSocket);
-      });
-
-      newSocket.on('drawing', (drawing: Drawing) => {
-        setDrawings(prev => [...prev, drawing]);
-      });
-
-      return () => newSocket.close();
-    }
-  }, [token, isAuthenticated]);
-
-  // Drawing handlers
   const getMousePos = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     return {
       x: e.clientX - rect.left,
-      y: e.clientY - rect.top
+      y: e.clientY - rect.top,
     };
   }, []);
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     setIsDrawing(true);
     const pos = getMousePos(e);
-    const drawing: Drawing = { x: pos.x, y: pos.y, color: currentColor, size: currentSize };
-    
-    setDrawings(prev => [...prev, drawing]);
-    socket?.emit('drawing', drawing);
+    const drawing: Drawing = {
+      x: pos.x,
+      y: pos.y,
+      color: currentColor,
+      size: currentSize,
+    };
+    setDrawings((prev) => [...prev, drawing]);
+    socket?.emitDrawing(drawing);
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isDrawing) return;
-    
     const pos = getMousePos(e);
-    const drawing: Drawing = { x: pos.x, y: pos.y, color: currentColor, size: currentSize };
-    
-    setDrawings(prev => [...prev, drawing]);
-    socket?.emit('drawing', drawing);
+    const drawing: Drawing = {
+      x: pos.x,
+      y: pos.y,
+      color: currentColor,
+      size: currentSize,
+    };
+    setDrawings((prev) => [...prev, drawing]);
+    socket?.emitDrawing(drawing);
   };
 
   const handleMouseUp = () => {
     setIsDrawing(false);
   };
 
-  const clearCanvas = () => {
+  const handleClear = () => {
     setDrawings([]);
-    socket?.emit('clear');
+    socket?.emitClear();
   };
 
+  const handleLogin = (newToken: string) => {
+    setToken(newToken);
+    setIsAuthenticated(true);
+    const newSocket = new CollabSocket();
+    newSocket.connect({ token: newToken });
+    
+    newSocket.onDrawing((drawing: Drawing) => {
+      setDrawings((prev) => [...prev, drawing]);
+    });
+    
+    setSocket(newSocket);
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setToken('');
+    socket?.disconnect();
+    setSocket(null);
+    setDrawings([]);
+  };
+
+  if (!isAuthenticated) {
+    return <Login onLogin={handleLogin} />;
+  }
+
   return (
-    <div className="App">
-      {!isAuthenticated ? (
-        <div className="login">
-          <h2>Collaborative Whiteboard</h2>
-          <input
-            type="text"
-            placeholder="Username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-          />
-          <button onClick={login}>Login</button>
-        </div>
-      ) : (
-        <div className="collaboration">
-          <div className="toolbar">
-            <label>Color: <input type="color" value={currentColor} onChange={(e) => setCurrentColor(e.target.value)} /></label>
-            <label>Size: <input type="range" min="1" max="20" value={currentSize} onChange={(e) => setCurrentSize(Number(e.target.value))} /></label>
-            <button onClick={clearCanvas}>Clear</button>
-            <button onClick={() => {setIsAuthenticated(false); setToken('');}}>Logout</button>
-          </div>
-          <canvas
-            width={1200}
-            height={600}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            style={{ border: '1px solid #ccc', cursor: isDrawing ? 'crosshair' : 'default' }}
-          />
-          <svg width={1200} height={600} className="drawing-layer">
-            {drawings.map((drawing, index) => (
-              <circle
-                key={index}
-                cx={drawing.x}
-                cy={drawing.y}
-                r={drawing.size / 2}
-                fill={drawing.color}
-              />
-            ))}
-          </svg>
-        </div>
-      )}
+    <div className="app">
+      <header className="header">
+        <h1>🎨 Collaborative Whiteboard</h1>
+        <button onClick={handleLogout} className="logout-btn">
+          Logout
+        </button>
+      </header>
+      
+      <Toolbar
+        color={currentColor}
+        size={currentSize}
+        onColorChange={setCurrentColor}
+        onSizeChange={setCurrentSize}
+        onClear={handleClear}
+      />
+      
+      <Canvas
+        drawings={drawings}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        isDrawing={isDrawing}
+      />
+      
+      <footer>🟢 {drawings.length} drawings | 🔴 {socket ? 'Connected' : 'Disconnected'}</footer>
     </div>
   );
 };
