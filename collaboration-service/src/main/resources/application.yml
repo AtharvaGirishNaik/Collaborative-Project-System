@@ -1,0 +1,26 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: collaboration-service
+  datasource:
+    url: jdbc:postgresql://postgres:5432/collab_db
+    username: admin
+    password: password
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+  redis:
+    host: redis
+    port: 6379
+
+jwt:
+  secret: mySecretKey123
+
+logging:
+  level:
+    com.collab.collaboration: DEBUG
+    org.springframework.web.socket: DEBUG
