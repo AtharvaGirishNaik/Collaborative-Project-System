@@ -30,10 +30,10 @@ services:
       - redis
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/collab_db
-      - SPRING_DATASOURCE_USERNAME=admin
-      - SPRING_DATASOURCE_PASSWORD=password
+      - SPRING_DATASOURCE_USERNAME=abd
+      - SPRING_DATASOURCE_PASSWORD=abc
       - REDIS_HOST=redis
-      - JWT_SECRET=mySecretKey123
+      - JWT_SECRET=abc
 
   frontend:
     build: ./frontend
